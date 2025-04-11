@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "846626737811",
+    "project_id": "kuriftu-1c523",
+    "storage_bucket": "kuriftu-1c523.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:846626737811:android:46076115b200c038a50766",
+        "android_client_info": {
+          "package_name": "com.example.kuriftu_hackathon"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMwdr-YgN36mLvizWjE1h9vFCmke9QOXg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
