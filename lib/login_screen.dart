@@ -4,7 +4,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:kuriftu_hackathon/home_screen.dart';
-import 'main.dart'; // Import the main.dart file to access MyHomePage
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -45,7 +46,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final fcmToken = await FirebaseMessaging.instance.getToken();
 
         if (!docSnap.exists) {
+          // Add 'uid' field during document creation
           await docRef.set({
+            'uid': user.uid, // Store UID as a field
             'displayName': user.displayName ?? '',
             'email': user.email ?? '',
             'photoUrl': user.photoURL ?? '',
@@ -55,13 +58,16 @@ class _LoginScreenState extends State<LoginScreen> {
             'scannedEasterEggIds': [],
             'lifetimePoints': 0,
             'fcmToken': fcmToken ?? '',
+            'createdAt': FieldValue.serverTimestamp(), // Add creation timestamp
           });
         } else {
+          // Update existing user data (UID field should already exist)
           await docRef.update({
             'displayName': user.displayName ?? '',
             'email': user.email ?? '',
             'photoUrl': user.photoURL ?? '',
             'fcmToken': fcmToken ?? '',
+            // No need to update 'uid' here as it's immutable and set on creation
           });
         }
         // Debug log basic user info.
@@ -85,21 +91,166 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Login'),
-      ),
-      body: Center(
-        child: _isSigningIn
-            ? const CircularProgressIndicator()
-            : ElevatedButton.icon(
-                icon: Image.asset(
-                  'assets/google_logo.png', // Ensure you have the logo asset or replace with an Icon
-                  height: 24.0,
-                ),
-                label: const Text('Sign in with Google'),
-                onPressed: _signInWithGoogle,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF0A3D62),
+              Color(0xFF079992),
+            ],
+          ),
+        ),
+        child: Stack(
+          children: [
+            // Floating decorative elements
+            Positioned(
+              top: size.height * 0.15,
+              left: 20,
+              child: _FloatingCircle(size: 40),
+            ),
+            Positioned(
+              top: size.height * 0.3,
+              right: 30,
+              child: _FloatingCircle(size: 60),
+            ),
+            Positioned(
+              bottom: size.height * 0.2,
+              left: 50,
+              child: _FloatingCircle(size: 30),
+            ),
+
+            SafeArea(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // Logo and Heading
+                  Column(
+                    children: [
+                      SvgPicture.asset(
+                        'assets/resort_logo.svg',
+                        height: size.height * 0.2,
+                      ),
+                      SizedBox(height: 20),
+                      Text(
+                        'Kuriftu Rewards',
+                        style: GoogleFonts.playfairDisplay(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        'Your Gateway to Exclusive Benefits',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Sign In Button
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: AnimatedContainer(
+                      duration: Duration(milliseconds: 300),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: _isSigningIn
+                            ? []
+                            : [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 10,
+                                  offset: Offset(0, 4),
+                                )
+                              ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _isSigningIn ? null : _signInWithGoogle,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Color(0xFF0A3D62),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15)),
+                          padding: EdgeInsets.symmetric(
+                              vertical: 16, horizontal: 30),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Image.asset(
+                              'assets/google_logo.png',
+                              height: 24,
+                            ),
+                            SizedBox(width: 15),
+                            Text(
+                              'Continue with Google',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Footer Text
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: Text(
+                      'Earn points with every stay\nUnlock exclusive rewards & benefits',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
+                  )
+                ],
               ),
+            ),
+
+            // Loading Overlay
+            if (_isSigningIn)
+              Container(
+                color: Colors.black54,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FloatingCircle extends StatelessWidget {
+  final double size;
+
+  const _FloatingCircle({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withOpacity(0.1),
       ),
     );
   }
