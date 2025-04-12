@@ -69,6 +69,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '846626737811',
     projectId: 'kuriftu-1c523',
     storageBucket: 'kuriftu-1c523.firebasestorage.app',
+    androidClientId: '846626737811-f7pqsniii80qivl7dhtp289h51kn3ehe.apps.googleusercontent.com',
+    iosClientId: '846626737811-cnlkeiajmhjr8mqelnuqqjo9mkrpf5bb.apps.googleusercontent.com',
     iosBundleId: 'com.example.kuriftuHackathon',
   );
+
 }

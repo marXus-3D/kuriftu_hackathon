@@ -12,7 +12,20 @@
           "package_name": "com.example.kuriftu_hackathon"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "846626737811-f7pqsniii80qivl7dhtp289h51kn3ehe.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.kuriftu_hackathon",
+            "certificate_hash": "5e8e93ba053a8ff710d2f2ce86f752b3f93067ec"
+          }
+        },
+        {
+          "client_id": "846626737811-j2e8h6ajpglgl07a3i00mp51iv3b4ts0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAMwdr-YgN36mLvizWjE1h9vFCmke9QOXg"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "846626737811-j2e8h6ajpglgl07a3i00mp51iv3b4ts0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "846626737811-cnlkeiajmhjr8mqelnuqqjo9mkrpf5bb.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.kuriftuHackathon"
+              }
+            }
+          ]
         }
       }
     }

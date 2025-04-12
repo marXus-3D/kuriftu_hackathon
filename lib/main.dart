@@ -1,9 +1,26 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:kuriftu_hackathon/firebase_options.dart';
+import 'auth_provider.dart' as kauth;
+import 'package:provider/provider.dart';
+import 'auth_provider.dart';
 import 'login_screen.dart';
+import 'home_screen.dart';
 
-void main() {
+late final FirebaseApp app;
+late final FirebaseAuth auth;
+bool shouldUseFirebaseEmulator = false;
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  app = await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  auth = FirebaseAuth.instanceFor(app: app);
+  if (shouldUseFirebaseEmulator) {
+    await auth.useAuthEmulator('localhost', 9099);
+  }
   runApp(const MyApp());
 }
 
@@ -12,13 +29,20 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return ChangeNotifierProvider<kauth.AuthProvider>(
+      create: (_) => kauth.AuthProvider(),
+      child: MaterialApp(
+        title: 'Flutter Demo',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
+        ),
+        home: Consumer<kauth.AuthProvider>(
+          builder: (context, auth, _) {
+            return auth.user != null ? HomeScreen() : const LoginScreen();
+          },
+        ),
       ),
-      home: const LoginScreen(),
     );
   }
 }

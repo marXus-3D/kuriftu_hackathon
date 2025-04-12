@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:kuriftu_hackathon/home_screen.dart';
 import 'main.dart'; // Import the main.dart file to access MyHomePage
 
 class LoginScreen extends StatefulWidget {
@@ -36,20 +39,43 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final user = userCredential.user;
       if (user != null) {
+        final docRef =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final docSnap = await docRef.get();
+        final fcmToken = await FirebaseMessaging.instance.getToken();
+
+        if (!docSnap.exists) {
+          await docRef.set({
+            'displayName': user.displayName ?? '',
+            'email': user.email ?? '',
+            'photoUrl': user.photoURL ?? '',
+            'pointsBalance': 0,
+            'currentTier': 'Bronze',
+            'lastRoomScanTimestamp': null,
+            'scannedEasterEggIds': [],
+            'lifetimePoints': 0,
+            'fcmToken': fcmToken ?? '',
+          });
+        } else {
+          await docRef.update({
+            'displayName': user.displayName ?? '',
+            'email': user.email ?? '',
+            'photoUrl': user.photoURL ?? '',
+            'fcmToken': fcmToken ?? '',
+          });
+        }
         // Debug log basic user info.
         debugPrint(
             'User signed in: ${user.uid}, ${user.displayName}, ${user.email}');
         // Navigate to HomeScreen (MyHomePage)
         Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) =>
-                    MyHomePage(title: 'Flutter Demo Home Page')));
+            context, MaterialPageRoute(builder: (context) => HomeScreen()));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error signing in: $e')),
       );
+      print(e.toString()); // Print the error for debugging
     } finally {
       setState(() {
         _isSigningIn = false;

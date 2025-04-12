@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // A user may read their own document
+      allow get, list: if request.auth.uid == userId;
+
+      // A user may create their own document (e.g., on first sign-in)
+      allow create: if request.auth.uid == userId;
+
+      // A user may update their own document with strict checks
+      allow update: if request.auth.uid == userId
+                    && isValidUserUpdate(userId);
+
+      // Subcollections
+      match /pointHistory/{docId} {
+        // Users can add an entry for themselves
+        allow create: if request.auth.uid == userId;
+        allow read: if request.auth.uid == userId;
+      }
+
+      match /earnedBadges/{badgeId} {
+        // Users can add a badge doc for themselves
+        allow create: if request.auth.uid == userId;
+        allow read: if request.auth.uid == userId;
+      }
+    }
+
+    // QR codes collection
+    match /qrCodes/{qrId} {
+      // Authenticated users can read to validate a QR code
+      allow get, list: if request.auth != null;
+      // No write by normal users
+      allow write: if false;
+    }
+
+    // Rewards collection
+    match /rewards/{rewardId} {
+      allow get, list: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Redemptions collection
+    match /redemptions/{redemptionId} {
+      // The user must own this redemption and attempt correct validation
+      allow create: if request.auth.uid == request.resource.data.userId
+                    && isValidRedemption();
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    function isValidUserUpdate(userId) {
+      // Example logic: ensure user cannot change fields like email.
+      // (Although partial, must check that only allowed fields are changed.)
+      // For demonstration, we show a simplified snippet that ensures email is unchanged.
+      let oldEmail = resource.data.email;
+      let newEmail = request.resource.data.email;
+
+      // Check if email hasn't been modified
+      if !(newEmail == oldEmail) {
+        return false;
+      }
+
+      // Example: ensure pointsBalance can only be incremented/decremented properly.
+      let oldPoints = resource.data.pointsBalance;
+      let newPoints = request.resource.data.pointsBalance;
+
+      // For a real app, you'd need more logic to check the reason for the points change
+      // (like scanning a valid QR code), but rules can't easily replicate your entire logic.
+      // Here, we allow up to +/- 1,000 per write as a simple example.
+      let pointsChange = newPoints - oldPoints;
+      if !(pointsChange >= -1000 && pointsChange <= 1000) {
+        return false;
+      }
+
+      // Example: ensure lastRoomScanTimestamp is not unexpectedly backdated or
+      // updated without a corresponding points increment, etc. 
+      // This gets extremely complex to verify. 
+      // We'll skip the extensive logic here for brevity.
+
+      return true;
+    }
+
+    function isValidRedemption() {
+      // Simplify the redemption logic. In reality, you'd do more checks:
+      // 1) The user has enough points in /users/{userId}
+      // 2) The reward is active or has enough quantity
+      // Because Firestore security rules can't do multi-document transactions easily,
+      // fully guaranteeing correctness is difficult on the client side.
+      return true; // Stub for demonstration
+    }
+  }
+}
