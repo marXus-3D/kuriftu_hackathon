@@ -1,0 +1,20 @@
+{
+  "buildFiles": [
+    "C:\\Users\\Leviathan\\AppData\\Local\\flutter\\packages\\flutter_tools\\gradle\\src\\main\\groovy\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\Leviathan\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\Users\\Leviathan\\Desktop\\Project\\Flutter\\kuriftu_hackathon\\android\\app\\.cxx\\Debug\\q43363j4\\armeabi-v7a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\Leviathan\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\Users\\Leviathan\\Desktop\\Project\\Flutter\\kuriftu_hackathon\\android\\app\\.cxx\\Debug\\q43363j4\\armeabi-v7a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {}
+}

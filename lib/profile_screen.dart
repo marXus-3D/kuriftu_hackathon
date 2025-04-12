@@ -1,14 +1,19 @@
 import 'dart:convert'; // Import dart:convert for jsonEncode
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// Hide AuthProvider from firebase_auth to avoid conflict
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
-import 'package:qr_flutter/qr_flutter.dart'; // Import qr_flutter
-import 'login_screen.dart'; // Import LoginScreen for navigation after sign out
+// Remove Firestore import if only reading from provider
+// import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart'; // Import Provider
+import 'package:qr_flutter/qr_flutter.dart';
+import 'login_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'auth_provider.dart'; // Import AuthProvider
 
 class ProfileScreen extends StatefulWidget {
+  // Keep StatefulWidget if _signOut needs context
   const ProfileScreen({Key? key}) : super(key: key);
 
   @override
@@ -16,78 +21,44 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  Map<String, dynamic>? _userData;
-  bool _isLoading = true;
-  String? _error;
+  // Remove local state variables
+  // Map<String, dynamic>? _userData;
+  // bool _isLoading = true;
+  // String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchUserData();
-  }
-
-  Future<void> _fetchUserData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      setState(() {
-        _error = "User not logged in.";
-        _isLoading = false;
-      });
-      return;
-    }
-
-    try {
-      final docSnap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-      if (docSnap.exists) {
-        setState(() {
-          _userData = docSnap.data();
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _error = "User data not found.";
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _error = "Error fetching user data: $e";
-        _isLoading = false;
-      });
-    }
-  }
+  // Remove initState and _fetchUserData
+  // @override
+  // void initState() { ... }
+  // Future<void> _fetchUserData() async { ... }
 
   Future<void> _signOut(BuildContext context) async {
+    // Keep sign out logic
     await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
-    // Navigate back to login screen and remove all previous routes
-    Navigator.of(context).pushAndRemoveUntil(
+    // Accessing provider here is fine, but context is needed for navigation
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      // Use rootNavigator if needed
       MaterialPageRoute(builder: (context) => const LoginScreen()),
       (Route<dynamic> route) => false,
     );
   }
 
-  String _generateQrData() {
-    if (_userData == null) return '';
+  String _generateQrData(Map<String, dynamic>? userData) {
+    // Pass userData as argument
+    if (userData == null) return '';
 
-    // Safely access data, providing defaults or handling nulls
     Timestamp? lastScanTimestamp =
-        _userData!['lastRoomScanTimestamp'] as Timestamp?;
-    Timestamp? createdAtTimestamp = _userData!['createdAt'] as Timestamp?;
+        userData['lastRoomScanTimestamp'] as Timestamp?;
+    Timestamp? createdAtTimestamp = userData['createdAt'] as Timestamp?;
 
     final data = {
-      'uid': _userData!['uid'] ?? 'N/A',
-      'displayName': _userData!['displayName'] ?? 'N/A',
-      'email': _userData!['email'] ?? 'N/A',
-      'currentTier': _userData!['currentTier'] ?? 'Bronze',
-      'lastRoomScanTimestamp': lastScanTimestamp
-          ?.millisecondsSinceEpoch, // Send as epoch milliseconds or null
-      'lifetimePoints': _userData!['lifetimePoints'] ?? 0,
-      'createdAt': createdAtTimestamp
-          ?.millisecondsSinceEpoch, // Send as epoch milliseconds or null
+      'uid': userData['uid'] ?? 'N/A',
+      'displayName': userData['displayName'] ?? 'N/A',
+      'email': userData['email'] ?? 'N/A',
+      'currentTier': userData['currentTier'] ?? 'Bronze',
+      'lastRoomScanTimestamp': lastScanTimestamp?.millisecondsSinceEpoch,
+      'lifetimePoints': userData['lifetimePoints'] ?? 0,
+      'createdAt': createdAtTimestamp?.millisecondsSinceEpoch,
     };
     return jsonEncode(data);
   }
@@ -95,9 +66,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    // Get AuthProvider instance
+    final authProvider = context.watch<AuthProvider>();
 
     return Scaffold(
       body: Container(
+        // ... existing decoration ...
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -110,7 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         child: Stack(
           children: [
-            // Decorative elements
+            // ... existing decorative elements ...
             Positioned(
               top: size.height * 0.1,
               right: 20,
@@ -123,29 +97,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
 
             SafeArea(
-              child: _isLoading
+              // Use authProvider state for UI
+              child: authProvider.isLoading
                   ? _buildLoadingIndicator()
-                  : _error != null
-                      ? _buildErrorState()
-                      : SingleChildScrollView(
-                          padding: EdgeInsets.all(24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              _buildProfileHeader(),
-                              SizedBox(height: 32),
-                              _buildTierStatusCard(),
-                              SizedBox(height: 24),
-                              _buildQrCodeSection(),
-                              SizedBox(height: 32),
-                              _buildPointsCard(),
-                              SizedBox(height: 24),
-                              _buildBadgesSection(),
-                              SizedBox(height: 32),
-                              _buildSignOutButton(),
-                            ],
-                          ),
-                        ),
+                  : authProvider.error != null
+                      ? _buildErrorState(authProvider.error!,
+                          authProvider) // Pass provider to retry
+                      : authProvider.userData == null
+                          ? _buildErrorState("User data not found.",
+                              authProvider) // Handle null userData
+                          : SingleChildScrollView(
+                              padding: EdgeInsets.all(24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  _buildProfileHeader(
+                                      authProvider.userData!), // Pass userData
+                                  SizedBox(height: 32),
+                                  _buildTierStatusCard(
+                                      authProvider.userData!), // Pass userData
+                                  SizedBox(height: 24),
+                                  _buildQrCodeSection(
+                                      authProvider.userData!), // Pass userData
+                                  SizedBox(height: 32),
+                                  _buildPointsCard(
+                                      authProvider.userData!), // Pass userData
+                                  SizedBox(height: 24),
+                                  _buildBadgesSection(
+                                      authProvider.userData!), // Pass userData
+                                  SizedBox(height: 32),
+                                  _buildSignOutButton(),
+                                ],
+                              ),
+                            ),
             ),
           ],
         ),
@@ -153,9 +137,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildProfileHeader() {
+  // Update build methods to accept userData Map
+  Widget _buildProfileHeader(Map<String, dynamic> userData) {
     return Column(
       children: [
+        // ... existing avatar ...
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
@@ -168,15 +154,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: CircleAvatar(
             radius: 48,
             backgroundImage: NetworkImage(
-                _userData!['photoUrl'] ?? 'https://via.placeholder.com/150'),
-            child: _userData!['photoUrl'] == null
+                userData['photoUrl'] ?? 'https://via.placeholder.com/150'),
+            child: userData['photoUrl'] == null
                 ? Icon(Icons.person, size: 48, color: Colors.white)
                 : null,
           ),
         ),
         SizedBox(height: 16),
         Text(
-          _userData!['displayName'] ?? 'Guest User',
+          userData['displayName'] ?? 'Guest User',
+          // ... existing style ...
           style: GoogleFonts.playfairDisplay(
             fontSize: 28,
             color: Colors.white,
@@ -184,7 +171,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         Text(
-          _userData!['email'] ?? 'No email provided',
+          userData['email'] ?? 'No email provided',
+          // ... existing style ...
           style: GoogleFonts.poppins(
             fontSize: 14,
             color: Colors.white70,
@@ -193,53 +181,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ],
     );
   }
-  // TODO Remove this at some time
-  // This is a placeholder for the profile header widget.
-  /* Widget _buildProfileHeader() {
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black26,
-                blurRadius: 10,
-                offset: Offset(0, 4)),
-            ],
-          ),
-          child: CircleAvatar(
-            radius: 48,
-            backgroundImage: NetworkImage(
-              _userData!['photoUrl'] ?? 'https://via.placeholder.com/150'),
-            child: _userData!['photoUrl'] == null
-                ? Icon(Icons.person, size: 48, color: Colors.white)
-                : null,
-          ),
-        ),
-        SizedBox(height: 16),
-        Text(
-          _userData!['displayName'] ?? 'Guest User',
-          style: GoogleFonts.playfairDisplay(
-            fontSize: 28,
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        Text(
-          _userData!['email'] ?? 'No email provided',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            color: Colors.white70,
-          ),
-        ),
-      ],
-    );
-  } */
 
-  Widget _buildTierStatusCard() {
+  Widget _buildTierStatusCard(Map<String, dynamic> userData) {
+    // Calculate progress based on userData
+    // Example: Assuming 1000 points for next tier (Silver) from Bronze
+    int points = userData['lifetimePoints'] ?? 0;
+    int pointsForNextTier = 1000; // Define thresholds properly
+    double progress = (points % pointsForNextTier) / pointsForNextTier;
+    String nextTierMessage = "$points / $pointsForNextTier points to next tier";
+    // Add logic for higher tiers
+
     return Container(
+      // ... existing decoration ...
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
@@ -249,6 +202,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Text(
             'Current Tier',
+            // ... existing style ...
             style: GoogleFonts.poppins(
               color: Colors.white70,
               fontSize: 14,
@@ -256,7 +210,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           SizedBox(height: 8),
           Text(
-            _userData!['currentTier'] ?? 'Bronze',
+            userData['currentTier'] ?? 'Bronze',
+            // ... existing style ...
             style: GoogleFonts.playfairDisplay(
               fontSize: 32,
               color: Colors.amber,
@@ -265,14 +220,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           SizedBox(height: 16),
           LinearProgressIndicator(
-            value: (_userData!['lifetimePoints'] ?? 0) / 1000,
+            value: progress, // Use calculated progress
+            // ... existing style ...
             backgroundColor: Colors.white12,
             valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF079992)),
             minHeight: 8,
           ),
           SizedBox(height: 8),
           Text(
-            '${_userData!['lifetimePoints'] ?? 0} / 1000 points to next tier',
+            nextTierMessage, // Use dynamic message
+            // ... existing style ...
             style: GoogleFonts.poppins(
               color: Colors.white70,
               fontSize: 12,
@@ -283,9 +240,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildQrCodeSection() {
+  Widget _buildQrCodeSection(Map<String, dynamic> userData) {
     return Column(
       children: [
+        // ... existing title ...
         Text(
           'Membership QR Code',
           style: GoogleFonts.poppins(
@@ -296,6 +254,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         SizedBox(height: 16),
         Container(
+          // ... existing decoration ...
           padding: EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -308,7 +267,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             children: [
               QrImageView(
-                data: _generateQrData(),
+                data: _generateQrData(userData), // Pass userData
+                // ... existing style ...
                 version: QrVersions.auto,
                 size: 180,
                 eyeStyle: QrEyeStyle(
@@ -320,6 +280,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Color(0xFF0A3D62),
                 ),
               ),
+              // ... existing text ...
               SizedBox(height: 16),
               Text(
                 'Scan at any Kuriftu facility',
@@ -335,8 +296,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildPointsCard() {
+  Widget _buildPointsCard(Map<String, dynamic> userData) {
     return Container(
+      // ... existing decoration ...
       padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
@@ -350,13 +312,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               Text(
                 'Available Points',
+                // ... existing style ...
                 style: GoogleFonts.poppins(
                   color: Colors.white70,
                   fontSize: 14,
                 ),
               ),
               Text(
-                '${_userData!['pointsBalance'] ?? 0}',
+                '${userData['pointsBalance'] ?? 0}', // Use userData
+                // ... existing style ...
                 style: GoogleFonts.playfairDisplay(
                   fontSize: 36,
                   color: Colors.amber,
@@ -371,13 +335,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildBadgesSection() {
-    // Replace with actual badge data
+  Widget _buildBadgesSection(Map<String, dynamic> userData) {
+    // TODO: Fetch actual badges from userData or a subcollection
     final dummyBadges = ['Eco Warrior', 'Frequent Visitor', 'Luxury Seeker'];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ... existing title ...
         Text(
           'Earned Badges',
           style: GoogleFonts.poppins(
@@ -391,9 +356,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           height: 100,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            itemCount: dummyBadges.length,
+            itemCount: dummyBadges.length, // Use actual badge count later
             itemBuilder: (context, index) {
               return Container(
+                // ... existing decoration ...
                 margin: EdgeInsets.only(right: 16),
                 padding: EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -406,7 +372,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Icon(Icons.emoji_events_rounded, color: Colors.amber),
                     SizedBox(height: 8),
                     Text(
-                      dummyBadges[index],
+                      dummyBadges[index], // Use actual badge name later
+                      // ... existing style ...
                       style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 12,
@@ -423,8 +390,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSignOutButton() {
+    // Keep sign out button as is, uses local _signOut method
     return ElevatedButton.icon(
       onPressed: () => _signOut(context),
+      // ... existing style ...
       icon: Icon(Icons.logout, color: Colors.white),
       label: Text(
         'Sign Out',
@@ -444,6 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildLoadingIndicator() {
+    // Keep loading indicator as is
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -459,7 +429,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildErrorState() {
+  // Update error state to include retry mechanism
+  Widget _buildErrorState(String errorMsg, AuthProvider authProvider) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -467,14 +438,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Icon(Icons.error_outline, size: 48, color: Colors.red),
           SizedBox(height: 16),
           Text(
-            _error!,
+            errorMsg, // Use error message from provider
             style: GoogleFonts.poppins(color: Colors.white),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 24),
           ElevatedButton(
-            onPressed: _fetchUserData,
+            onPressed: () =>
+                authProvider.refreshUserData(), // Call refresh method
             child: Text('Retry'),
+          ),
+          SizedBox(height: 16), // Add sign out button in error state too
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.withOpacity(0.8)),
+            onPressed: () => _signOut(context),
+            child: Text('Sign Out',
+                style: GoogleFonts.poppins(color: Colors.white)),
           ),
         ],
       ),
@@ -482,7 +462,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+// Keep _FloatingCircle as is
 class _FloatingCircle extends StatelessWidget {
+  // ... existing code ...
   final double size;
 
   const _FloatingCircle({required this.size});

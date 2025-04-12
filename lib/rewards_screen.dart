@@ -1,25 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// Hide AuthProvider from firebase_auth to avoid conflict
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:provider/provider.dart'; // Import Provider
+import 'auth_provider.dart'; // Import AuthProvider
 
 class RewardsScreen extends StatelessWidget {
   const RewardsScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Replace with actual points from your state provider
-    final int userPoints = 1500; // Example placeholder
+    // Get user data from AuthProvider
+    final authProvider = context.watch<AuthProvider>();
+    final userData = authProvider.userData;
+    final userPoints =
+        userData?['pointsBalance'] ?? 0; // Get points from provider
+    // final userTier = userData?['currentTier'] ?? 'Bronze'; // Get tier if needed directly in build
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Available Rewards'),
+        // Consider adding points display to AppBar
+        // actions: [
+        //   Padding(
+        //     padding: const EdgeInsets.only(right: 16.0),
+        //     child: Center(child: Text('Points: $userPoints', style: TextStyle(fontSize: 16))),
+        //   )
+        // ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('rewards')
             .where('isActive', isEqualTo: true)
+            .orderBy('pointsCost') // Optional: Order by cost
             .snapshots(),
         builder: (context, snapshot) {
+          // ... existing error/loading handling ...
           if (snapshot.hasError) {
             return const Center(child: Text('Error fetching rewards'));
           }
@@ -36,18 +52,23 @@ class RewardsScreen extends StatelessWidget {
             itemCount: rewardsDocs.length,
             itemBuilder: (context, index) {
               final doc = rewardsDocs[index];
-              final name = doc['name'] ?? '';
-              final description = doc['description'] ?? '';
-              final pointsCost = doc['pointsCost'] ?? 0;
-              final tierRequired = doc['tierRequired'] ?? 'Bronze';
+              final data = doc.data() as Map<String, dynamic>; // Cast data
+              final name = data['name'] ?? '';
+              final description = data['description'] ?? '';
+              final pointsCost = data['pointsCost'] ?? 0;
+              final tierRequired = data['tierRequired'] ?? 'Bronze';
               final canAfford = userPoints >= pointsCost;
+              // Add tier check if needed for enabling button
+              // final canAccessTier = _tierIsEligible(userTier, tierRequired);
+              // final canRedeem = canAfford && canAccessTier;
 
               return Card(
+                margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: ListTile(
                   title: Text(name),
                   subtitle: Text(description),
-                  trailing: Text('Cost: $pointsCost'),
-                  onTap: canAfford
+                  trailing: Text('Cost: $pointsCost pts'),
+                  onTap: canAfford // Use canRedeem if tier check is added
                       ? () {
                           _confirmRedeem(
                             context,
@@ -55,12 +76,14 @@ class RewardsScreen extends StatelessWidget {
                             name,
                             pointsCost,
                             tierRequired,
-                            doc['availableQuantity'],
+                            data['availableQuantity'], // Pass quantity
+                            authProvider, // Pass provider for checks inside
                           );
                         }
                       : null,
-                  // Give a visual hint if user cannot redeem
-                  enabled: canAfford,
+                  enabled: canAfford, // Use canRedeem if tier check is added
+                  tileColor:
+                      canAfford ? null : Colors.grey.shade300, // Visual hint
                 ),
               );
             },
@@ -77,7 +100,32 @@ class RewardsScreen extends StatelessWidget {
     int pointsCost,
     String tierRequired,
     int? availableQuantity,
+    AuthProvider authProvider, // Receive provider
   ) async {
+    // Perform checks using provider data before showing dialog
+    final userData = authProvider.userData;
+    final userPoints = userData?['pointsBalance'] ?? 0;
+    final userTier = userData?['currentTier'] ?? 'Bronze';
+
+    if (userPoints < pointsCost) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not enough points')),
+      );
+      return;
+    }
+    if (!_tierIsEligible(userTier, tierRequired)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reward requires $tierRequired tier or higher')),
+      );
+      return;
+    }
+    if (availableQuantity != null && availableQuantity <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reward is out of stock')),
+      );
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -96,8 +144,9 @@ class RewardsScreen extends StatelessWidget {
       ),
     );
     if (confirm == true) {
+      // Pass provider to redeem function
       await _redeemReward(context, rewardId, rewardName, pointsCost,
-          tierRequired, availableQuantity);
+          tierRequired, availableQuantity, authProvider);
     }
   }
 
@@ -108,8 +157,10 @@ class RewardsScreen extends StatelessWidget {
     int pointsCost,
     String tierRequired,
     int? availableQuantity,
+    AuthProvider authProvider, // Receive provider
   ) async {
-    final user = FirebaseAuth.instance.currentUser;
+    // User object is already available in provider
+    final user = authProvider.user;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('User not signed in')),
@@ -120,8 +171,9 @@ class RewardsScreen extends StatelessWidget {
     final redemptionId =
         FirebaseFirestore.instance.collection('redemptions').doc().id;
     final now = Timestamp.now();
+    // Consider a more robust validation code generation method
     final validationCode =
-        DateTime.now().millisecondsSinceEpoch.toString(); // Simple example
+        '${DateTime.now().millisecondsSinceEpoch % 1000000}'.padLeft(6, '0');
 
     try {
       await FirebaseFirestore.instance.runTransaction((transaction) async {
@@ -134,12 +186,12 @@ class RewardsScreen extends StatelessWidget {
             .doc(redemptionId);
         final pointHistoryRef = userRef.collection('pointHistory').doc();
 
+        // Re-fetch user and reward inside transaction for consistency
         final userSnap = await transaction.get(userRef);
         final rewardSnap = await transaction.get(rewardRef);
 
-        if (!userSnap.exists) {
-          throw Exception('User document not found');
-        }
+        // --- Checks inside transaction ---
+        if (!userSnap.exists) throw Exception('User document not found');
         if (!rewardSnap.exists || !(rewardSnap.data()?['isActive'] == true)) {
           throw Exception('Reward not available');
         }
@@ -148,120 +200,82 @@ class RewardsScreen extends StatelessWidget {
         final rewardData = rewardSnap.data()!;
         final currentPoints = userData['pointsBalance'] ?? 0;
         final currentTier = userData['currentTier'] ?? 'Bronze';
-        final rewardTier = rewardData['tierRequired'] ?? 'Bronze';
-        final qty = (rewardData['availableQuantity'] ?? 999999) as int;
+        final rewardTierReq = rewardData['tierRequired'] ?? 'Bronze';
+        final qty = (rewardData['availableQuantity']) as int?; // Nullable int
 
-        // Check points and tier
-        if (currentPoints < pointsCost) {
-          throw Exception('Not enough points');
+        if (currentPoints < pointsCost) throw Exception('Not enough points');
+        if (!_tierIsEligible(currentTier, rewardTierReq)) {
+          throw Exception(
+              'Ineligible tier ($currentTier vs $rewardTierReq required)');
         }
-        // Tier check (a simple example, actual logic may differ)
-        // For instance, you might compare numeric tier levels. Here, we do a simple string check.
-        if (!_tierIsEligible(currentTier, rewardTier)) {
-          throw Exception('Ineligible tier');
-        }
-        if (qty <= 0) {
-          throw Exception('Reward out of stock');
-        }
+        if (qty != null && qty <= 0) throw Exception('Reward out of stock');
+        // --- End Checks ---
 
-        // Deduct points from user
-        transaction.update(userRef, {
-          'pointsBalance': currentPoints - pointsCost,
-        });
+        // --- Updates inside transaction ---
+        transaction
+            .update(userRef, {'pointsBalance': currentPoints - pointsCost});
 
-        // Update reward quantity if needed
-        if (rewardData.containsKey('availableQuantity')) {
-          transaction.update(rewardRef, {
-            'availableQuantity': qty - 1,
-          });
+        if (qty != null) {
+          // Only update quantity if it exists
+          transaction.update(rewardRef, {'availableQuantity': qty - 1});
         }
 
-        // Create redemption doc
         transaction.set(redemptionRef, {
           'userId': userId,
           'rewardId': rewardId,
           'rewardName': rewardName,
           'pointsCost': pointsCost,
           'timestamp': now,
-          'status': 'completed',
+          'status': 'completed', // Or 'pending_validation' if needed
           'validationCode': validationCode,
+          'userEmail': userData['email'], // Store email for easier lookup
+          'userDisplayName': userData['displayName'], // Store name
         });
 
-        // Add a "Redemption" entry to pointHistory
         transaction.set(pointHistoryRef, {
           'timestamp': now,
           'pointsChange': -pointsCost,
           'description': 'Redemption: $rewardName',
+          'type': 'redemption', // Add type for filtering
+          'rewardId': rewardId,
         });
+        // --- End Updates ---
       });
 
-      // On success, also update tier and check badges
-      await _updateTierAndBadges(userId);
+      // On success, trigger refresh in AuthProvider
+      await authProvider.refreshUserData();
 
-      // On success
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Redemption complete! Your code: $validationCode')),
       );
-      // Optionally navigate to a screen displaying the code
+      // Optionally navigate or show code prominently
     } catch (e) {
-      // Handle failure
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(content: Text('Redemption failed: ${e.toString()}')),
       );
+      // Refresh user data even on failure to ensure UI consistency
+      await authProvider.refreshUserData();
     }
   }
 
-  // Example method to update tier and check badges
-  Future<void> _updateTierAndBadges(String userId) async {
-    final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
-    final userSnap = await userRef.get();
-    if (!userSnap.exists) return;
-
-    final userData = userSnap.data()!;
-    final pointsBalance = userData['pointsBalance'] ?? 0;
-
-    final newTier = _determineTier(pointsBalance);
-    final currentTier = userData['currentTier'] ?? 'Bronze';
-    if (newTier != currentTier) {
-      await userRef.update({'currentTier': newTier});
-      // Optionally notify user of tier change
-    }
-
-    await _checkAndAwardBadges(userRef, userData);
-  }
-
-  String _determineTier(int points) {
-    // Same thresholds as in scanner_screen.dart
-    if (points >= 10000) return 'Platinum';
-    if (points >= 5000) return 'Gold';
-    if (points >= 1000) return 'Silver';
-    return 'Bronze';
-  }
-
-  Future<void> _checkAndAwardBadges(
-      DocumentReference userRef, Map<String, dynamic> userData) async {
-    // Example Easter Egg logic, adapt for your badges
-    final scannedEasterEggIds =
-        List<String>.from(userData['scannedEasterEggIds'] ?? []);
-    final earnedBadgesRef = userRef.collection('earnedBadges');
-
-    if (scannedEasterEggIds.length >= 5) {
-      final existingBadge = await earnedBadgesRef.doc('eggHunter').get();
-      if (!existingBadge.exists) {
-        await earnedBadgesRef.doc('eggHunter').set({
-          'name': 'Egg Hunter',
-          'description': 'Scanned 5 Easter Eggs!',
-          'timestampEarned': Timestamp.now(),
-        });
-      }
-    }
-    // Additional badge checks...
-  }
-
-  // Example tier comparison logic
+  // Keep tier eligibility logic (can be moved to a utility class later)
   bool _tierIsEligible(String userTier, String rewardTier) {
-    // Replace with actual logic to rank tiers. For now, we just say if userTier == rewardTier, pass.
-    return userTier == rewardTier;
+    // Define tier hierarchy
+    const tierHierarchy = {
+      'Bronze': 1,
+      'Silver': 2,
+      'Gold': 3,
+      'Platinum': 4,
+    };
+    final userLevel = tierHierarchy[userTier] ?? 0;
+    final requiredLevel = tierHierarchy[rewardTier] ?? 0;
+    return userLevel >= requiredLevel;
   }
+
+  // Remove local _updateTierAndBadges, _determineTier, _checkAndAwardBadges
+  // These updates should happen centrally or be triggered by AuthProvider/Service
+  // Future<void> _updateTierAndBadges(String userId) async { ... }
+  // String _determineTier(int points) { ... }
+  // Future<void> _checkAndAwardBadges(...) async { ... }
 }

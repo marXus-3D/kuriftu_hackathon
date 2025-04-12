@@ -1,0 +1,2 @@
+C:/Users/Leviathan/Desktop/Project/Flutter/kuriftu_hackathon/android/app/.cxx/Debug/q43363j4/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/Leviathan/Desktop/Project/Flutter/kuriftu_hackathon/android/app/.cxx/Debug/q43363j4/armeabi-v7a/CMakeFiles/rebuild_cache.dir
