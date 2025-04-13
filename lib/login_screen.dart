@@ -18,13 +18,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isSigningIn = false;
 
   Future<void> _signInWithGoogle() async {
-    // FirebaseAuth.instance.signInWithEmailAndPassword(
-    //     email: 'marcus.h1620@gmail.com', password: 'password123');
-    // print('User created successfully!');
-    // Navigator.pushReplacement(
-    //     context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: 'marcus.h1620@gmail.com', password: 'password123');
+    print('User created successfully!');
+    Navigator.pushReplacement(
+        context, MaterialPageRoute(builder: (context) => HomeScreen()));
 
-    // return;
+    return;
     setState(() {
       _isSigningIn = true;
     });

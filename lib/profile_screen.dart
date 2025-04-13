@@ -11,6 +11,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'login_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'auth_provider.dart'; // Import AuthProvider
+import 'package:intl/intl.dart'; // Import for number formatting
 
 class ProfileScreen extends StatefulWidget {
   // Keep StatefulWidget if _signOut needs context
@@ -61,6 +62,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'createdAt': createdAtTimestamp?.millisecondsSinceEpoch,
     };
     return jsonEncode(data);
+  }
+
+  // Define tier thresholds using lifetimePoints
+  static const Map<String, int> tierThresholds = {
+    'Bronze': 0,
+    'Silver': 1000,
+    'Gold': 5000,
+    'Platinum': 10000,
+  };
+
+  // Helper to get the next tier and its threshold
+  MapEntry<String, int> _getNextTierInfo(String currentTier) {
+    switch (currentTier) {
+      case 'Bronze':
+        return MapEntry('Silver', tierThresholds['Silver']!);
+      case 'Silver':
+        return MapEntry('Gold', tierThresholds['Gold']!);
+      case 'Gold':
+        return MapEntry('Platinum', tierThresholds['Platinum']!);
+      case 'Platinum':
+      default:
+        return MapEntry(
+            'Platinum', tierThresholds['Platinum']!); // Already highest
+    }
   }
 
   @override
@@ -183,13 +208,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildTierStatusCard(Map<String, dynamic> userData) {
-    // Calculate progress based on userData
-    // Example: Assuming 1000 points for next tier (Silver) from Bronze
-    int points = userData['lifetimePoints'] ?? 0;
-    int pointsForNextTier = 1000; // Define thresholds properly
-    double progress = (points % pointsForNextTier) / pointsForNextTier;
-    String nextTierMessage = "$points / $pointsForNextTier points to next tier";
-    // Add logic for higher tiers
+    final int lifetimePoints = userData['lifetimePoints'] ?? 0;
+    final String currentTier = userData['currentTier'] ?? 'Bronze';
+
+    final int currentTierStartPoints = tierThresholds[currentTier] ?? 0;
+    final nextTierInfo = _getNextTierInfo(currentTier);
+    final String nextTierName = nextTierInfo.key;
+    final int nextTierStartPoints = nextTierInfo.value;
+
+    double progress = 0.0;
+    String nextTierMessage = 'You are at the highest tier!';
+    final numberFormat = NumberFormat.compact(); // For formatting large numbers
+
+    if (currentTier != 'Platinum') {
+      final pointsInCurrentTier = lifetimePoints - currentTierStartPoints;
+      final pointsForNextTierRange =
+          nextTierStartPoints - currentTierStartPoints;
+      if (pointsForNextTierRange > 0) {
+        progress =
+            (pointsInCurrentTier / pointsForNextTierRange).clamp(0.0, 1.0);
+      }
+      final pointsNeeded = nextTierStartPoints - lifetimePoints;
+      nextTierMessage =
+          '${numberFormat.format(pointsNeeded)} points to $nextTierName';
+    } else {
+      progress = 1.0; // Maxed out at Platinum
+    }
 
     return Container(
       // ... existing decoration ...
@@ -200,6 +244,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Column(
         children: [
+          // ... existing 'Current Tier' text ...
           Text(
             'Current Tier',
             // ... existing style ...
@@ -210,7 +255,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           SizedBox(height: 8),
           Text(
-            userData['currentTier'] ?? 'Bronze',
+            currentTier, // Use currentTier directly
             // ... existing style ...
             style: GoogleFonts.playfairDisplay(
               fontSize: 32,
@@ -221,15 +266,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           SizedBox(height: 16),
           LinearProgressIndicator(
             value: progress, // Use calculated progress
-            // ... existing style ...
             backgroundColor: Colors.white12,
             valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF079992)),
             minHeight: 8,
+            borderRadius: BorderRadius.circular(4), // Add rounded corners
           ),
           SizedBox(height: 8),
           Text(
             nextTierMessage, // Use dynamic message
-            // ... existing style ...
             style: GoogleFonts.poppins(
               color: Colors.white70,
               fontSize: 12,

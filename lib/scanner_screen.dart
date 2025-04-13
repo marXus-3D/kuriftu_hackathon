@@ -2,12 +2,14 @@ import 'dart:convert'; // Import dart:convert for jsonDecode
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Keep for Timestamp type if needed elsewhere
 // Hide AuthProvider from firebase_auth to avoid conflict
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:permission_handler/permission_handler.dart'; // Import permission_handler
 import 'package:provider/provider.dart'; // Import Provider
 import 'auth_provider.dart'; // Import local AuthProvider
+import 'package:confetti/confetti.dart'; // Import confetti package
+import 'dart:math'; // Import math for confetti direction
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({Key? key}) : super(key: key);
@@ -25,11 +27,17 @@ class _ScannerScreenState extends State<ScannerScreen> {
       PermissionStatus.denied; // Track permission status
   final MobileScannerController _scannerController =
       MobileScannerController(); // Create controller instance
+  final Set<String> _sessionUsedServiceIds =
+      {}; // Track used service IDs locally for demo
+
+  late ConfettiController _confettiController; // Add confetti controller
 
   @override
   void initState() {
     super.initState();
     _requestCameraPermission();
+    _confettiController = ConfettiController(
+        duration: const Duration(seconds: 1)); // Initialize confetti controller
   }
 
   // Request camera permission
@@ -44,183 +52,119 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void dispose() {
     _scannerController.dispose();
+    _confettiController.dispose(); // Dispose confetti controller
     super.dispose();
   }
 
   Future<void> _validateAndUpdateQRCode(Map<String, dynamic> qrDataMap) async {
-    // Accept Map
-    // Access AuthProvider for user ID and refreshing data
+    // --- LOCAL DEMO PROCESSING ---
     final authProvider = context.read<AuthProvider>();
-    final user = authProvider.user;
+    final user = authProvider
+        .user; // Still need user for context, though not strictly for DB ID now
 
     if (user == null) {
-      throw Exception('No authenticated user found');
+      throw Exception('No authenticated user found (local check)');
     }
-    final userId = user.uid;
+    // final userId = user.uid; // Not strictly needed for local update
+
+    // Get current user data from provider
+    final currentLocalUserData = authProvider.userData;
+    if (currentLocalUserData == null) {
+      throw Exception('User data not available in provider');
+    }
+
+    // Create a mutable copy to modify
+    final Map<String, dynamic> updatedLocalUserData =
+        Map<String, dynamic>.from(currentLocalUserData);
 
     // Extract data from the map
     final String? qrCodeId = qrDataMap['id'] as String?;
     final String? type = qrDataMap['type'] as String?;
-    final int pointsValue =
-        (qrDataMap['points'] as num?)?.toInt() ?? 0; // Handle num type
+    final int pointsValue = (qrDataMap['points'] as num?)?.toInt() ?? 0;
+    final double price = (qrDataMap['price'] as num?)?.toDouble() ?? 0.0;
 
     if (qrCodeId == null || type == null) {
       throw Exception('Invalid QR code data: Missing id or type');
     }
 
+    // --- Local Validation and Update Logic ---
+    int lifetimePoints = updatedLocalUserData['lifetimePoints'] ?? 0;
+    int pointsBalance = updatedLocalUserData['pointsBalance'] ?? 0;
+    final now = Timestamp
+        .now(); // Use Timestamp for consistency if needed, otherwise DateTime.now()
+
+    print("Processing locally: ID=$qrCodeId, Type=$type, Points=$pointsValue");
+
+    if (type == 'room') {
+      final lastScanTimestamp =
+          updatedLocalUserData['lastRoomScanTimestamp'] as Timestamp?;
+      // Use DateTime for comparison
+      final canScan = lastScanTimestamp == null ||
+          DateTime.now().difference(lastScanTimestamp.toDate()).inHours >= 24;
+      if (!canScan) {
+        throw Exception(
+            '(Local) Room QR already scanned within the last 24 hours');
+      }
+      pointsBalance += pointsValue;
+      updatedLocalUserData['pointsBalance'] = pointsBalance;
+      updatedLocalUserData['lastRoomScanTimestamp'] =
+          now; // Update timestamp locally
+      updatedLocalUserData['lifetimePoints'] = lifetimePoints + pointsValue;
+    } else if (type == 'easterEgg') {
+      final scannedList =
+          List<String>.from(updatedLocalUserData['scannedEasterEggIds'] ?? []);
+      if (scannedList.contains(qrCodeId)) {
+        throw Exception('(Local) Already scanned this Easter Egg');
+      }
+      pointsBalance += pointsValue;
+      updatedLocalUserData['pointsBalance'] = pointsBalance;
+      scannedList.add(qrCodeId); // Add to the list in the copied map
+      updatedLocalUserData['scannedEasterEggIds'] = scannedList;
+      updatedLocalUserData['lifetimePoints'] = lifetimePoints + pointsValue;
+    } else if (type == 'service') {
+      // Check local session set for used service IDs
+      if (_sessionUsedServiceIds.contains(qrCodeId)) {
+        throw Exception('(Local) Service QR code already used in this session');
+      }
+      pointsBalance += pointsValue;
+      updatedLocalUserData['pointsBalance'] = pointsBalance; // Corrected line
+      updatedLocalUserData['lifetimePoints'] = lifetimePoints + pointsValue;
+      _sessionUsedServiceIds.add(qrCodeId); // Mark as used for this session
+    } else {
+      throw Exception('(Local) Unrecognized QR code type: $type');
+    }
+
+    // --- Simulate Point History (Print) ---
+    String description = 'Scanned $type: ${qrDataMap['name'] ?? qrCodeId}';
+    if (type == 'room')
+      description = 'Scanned Room: ${qrDataMap['roomNumber'] ?? qrCodeId}';
+    else if (type == 'easterEgg')
+      description = 'Scanned Easter Egg: ${qrDataMap['location'] ?? qrCodeId}';
+    else if (type == 'service')
+      description =
+          'Scanned Service: ${qrDataMap['serviceType'] ?? qrDataMap['name'] ?? qrCodeId}';
+
+    print("--- Local Point History Entry ---");
+    print("Timestamp: ${DateTime.now()}"); // Use DateTime for local print
+    print("Points Change: $pointsValue");
+    print("Description: $description");
+    print("Type: scan");
+    print("QR Code ID: $qrCodeId");
+    print("QR Data Type: $type");
+    print("-------------------------------");
+
+    // --- Update AuthProvider with the modified local data ---
+    authProvider.updateLocalUserData(updatedLocalUserData);
+
+    // No need to call authProvider.refreshUserData() as we updated locally.
+
+    // --- END LOCAL DEMO PROCESSING ---
+
+    /* --- ORIGINAL FIRESTORE CODE (COMMENTED OUT) ---
     await FirebaseFirestore.instance.runTransaction((transaction) async {
-      // Use qrCodeId from the map to reference the document
-      final qrCodeRef =
-          FirebaseFirestore.instance.collection('qrCodes').doc(qrCodeId);
-      final userRef =
-          FirebaseFirestore.instance.collection('users').doc(userId);
-      final pointHistoryRef = userRef.collection('pointHistory').doc();
-
-      final qrCodeSnap =
-          await transaction.get(qrCodeRef); // Validate against Firestore doc
-      final userSnap = await transaction.get(userRef);
-
-      // Validate using Firestore document data
-      if (!qrCodeSnap.exists || !(qrCodeSnap.data()?['isActive'] == true)) {
-        throw Exception('Invalid or inactive QR code (Firestore)');
-      }
-      if (!userSnap.exists) {
-        throw Exception('User document not found');
-      }
-
-      // Use Firestore data for validation checks where appropriate (e.g., isUsed)
-      final firestoreQrData = qrCodeSnap.data()!;
-      final userData = userSnap.data()!;
-      final int lifetimePoints = userData['lifetimePoints'] ?? 0;
-      int pointsBalance = userData['pointsBalance'] ?? 0;
-      final now = Timestamp.now();
-
-      // --- Update logic based on type (using type from qrDataMap) ---
-      if (type == 'room') {
-        final lastScan = userData['lastRoomScanTimestamp'] as Timestamp?;
-        final canScan = lastScan == null ||
-            DateTime.now().difference(lastScan.toDate()).inHours >= 24;
-        if (!canScan) {
-          throw Exception('Room QR already scanned within the last 24 hours');
-        }
-        pointsBalance += pointsValue;
-        transaction.update(userRef, {
-          'pointsBalance': pointsBalance,
-          'lastRoomScanTimestamp': now,
-          'lifetimePoints': lifetimePoints + pointsValue,
-        });
-      } else if (type == 'easterEgg') {
-        final scannedList =
-            List<String>.from(userData['scannedEasterEggIds'] ?? []);
-        if (scannedList.contains(qrCodeId)) {
-          throw Exception('Already scanned this Easter Egg');
-        }
-        pointsBalance += pointsValue;
-        transaction.update(userRef, {
-          'pointsBalance': pointsBalance,
-          'scannedEasterEggIds': FieldValue.arrayUnion([qrCodeId]),
-          'lifetimePoints': lifetimePoints + pointsValue,
-        });
-      } else if (type == 'service') {
-        // Changed from 'receipt' to 'service'
-        // Check Firestore document for 'isUsed' status
-        if (firestoreQrData['isUsed'] == true) {
-          throw Exception('Service QR code already used');
-        }
-        pointsBalance += pointsValue;
-        transaction.update(userRef, {
-          'pointsBalance': pointsBalance,
-          'lifetimePoints': lifetimePoints + pointsValue,
-        });
-        // Mark the service QR code as used in Firestore
-        transaction.update(qrCodeRef,
-            {'isUsed': true, 'usedBy': userId, 'usedTimestamp': now});
-      } else {
-        throw Exception('Unrecognized QR code type: $type');
-      }
-      // --- End update logic ---
-
-      // --- Add point history ---
-      // Use data from qrDataMap for a richer description
-      String description = 'Scanned $type: ${qrDataMap['name'] ?? qrCodeId}';
-      if (type == 'room') {
-        description = 'Scanned Room: ${qrDataMap['roomNumber'] ?? qrCodeId}';
-      } else if (type == 'easterEgg') {
-        description =
-            'Scanned Easter Egg: ${qrDataMap['location'] ?? qrCodeId}';
-      } else if (type == 'service') {
-        description =
-            'Scanned Service: ${qrDataMap['serviceType'] ?? qrDataMap['name'] ?? qrCodeId}';
-      }
-
-      transaction.set(pointHistoryRef, {
-        'timestamp': now,
-        'pointsChange': pointsValue,
-        'description': description, // Use richer description
-        'type': 'scan',
-        'qrCodeId': qrCodeId,
-        'qrDataType': type, // Store the type from QR
-        // Optionally store other relevant data from qrDataMap
-        'qrData': qrDataMap,
-      });
-      // --- End point history ---
+      // ... firestore reads and writes ...
     });
-
-    // ... rest of the function (_updateTierAndBadges, refreshUserData) ...
-    await _updateTierAndBadges(userId);
-    await authProvider.refreshUserData();
-  }
-
-  // Example method to update tier and check badges
-  Future<void> _updateTierAndBadges(String userId) async {
-    final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
-    final userSnap = await userRef.get();
-    if (!userSnap.exists) return;
-
-    final userData = userSnap.data()!;
-    int pointsBalance = userData['pointsBalance'] ?? 0;
-
-    // 1) Update Tiers
-    final newTier = _determineTier(pointsBalance);
-    final currentTier = userData['currentTier'] ?? 'Bronze';
-    if (newTier != currentTier) {
-      await userRef.update({'currentTier': newTier});
-      // Optionally notify user of tier change
-    }
-
-    // 2) Check Badge criteria
-    await _checkAndAwardBadges(userRef, userData);
-  }
-
-  String _determineTier(int points) {
-    // Example thresholds, adapt as needed
-    if (points >= 10000) return 'Platinum';
-    if (points >= 5000) return 'Gold';
-    if (points >= 1000) return 'Silver';
-    return 'Bronze';
-  }
-
-  Future<void> _checkAndAwardBadges(
-      DocumentReference userRef, Map<String, dynamic> userData) async {
-    // Example logic: check how many Easter Eggs scanned
-    final scannedEasterEggIds =
-        List<String>.from(userData['scannedEasterEggIds'] ?? []);
-    final earnedBadgesRef = userRef.collection('earnedBadges');
-
-    if (scannedEasterEggIds.length >= 5) {
-      // Check if badge already awarded
-      final existingBadge = await earnedBadgesRef.doc('eggHunter').get();
-      if (!existingBadge.exists) {
-        await earnedBadgesRef.doc('eggHunter').set({
-          'name': 'Egg Hunter',
-          'description': 'Scanned 5 Easter Eggs!',
-          'timestampEarned': Timestamp.now(),
-        });
-        // Optionally notify user of new badge
-      }
-    }
-
-    // Add more badge checks here...
+    */
   }
 
   void processScan(Map<String, dynamic> qrDataMap) {
@@ -238,6 +182,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       setState(() {
         _lastScanResult = 'Success! Points updated.';
       });
+      _confettiController.play(); // Play confetti on success!
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Points updated successfully!'),
@@ -346,6 +291,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
           ),
         ),
         child: Stack(
+          alignment: Alignment.center, // Align stack children centrally
           children: [
             // Conditionally build scanner based on permission
             if (_cameraPermissionStatus == PermissionStatus.granted)
@@ -376,6 +322,34 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
             // Processing Overlay
             if (_isProcessing) _buildProcessingOverlay(),
+
+            // Add Confetti Widget (aligned top center)
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConfettiWidget(
+                confettiController: _confettiController,
+                blastDirectionality: BlastDirectionality
+                    .explosive, // Or BlastDirectionality.directional
+                // blastDirection: -pi / 2, // Direction for directional blast (e.g., downwards)
+                shouldLoop: false,
+                numberOfParticles: 20, // Number of particles to blast
+                gravity: 0.2, // How fast particles fall
+                emissionFrequency: 0.05, // How often particles emit
+                maxBlastForce: 20, // Maximum blast force
+                minBlastForce: 10, // Minimum blast force
+                colors: const [
+                  // Customize colors
+                  Colors.green,
+                  Colors.blue,
+                  Colors.pink,
+                  Colors.orange,
+                  Colors.purple,
+                  Colors.yellow,
+                  Colors.amber,
+                ],
+                // createParticlePath: drawStar, // Optional custom particle shape
+              ),
+            ),
           ],
         ),
       ),
